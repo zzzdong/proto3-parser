@@ -1,0 +1,151 @@
+file = _{ SOI ~ syntax ~ ( import | package | option | topLevelDef | emptyStatement )* ~ EOI }
+
+topLevelDef = { Message | Enum | Service }
+
+newline    = _{ "\n" | "\r\n" }
+WHITESPACE = _{ " " | "\t" | newline }
+block_comment = _{ "/*" ~ (block_comment | !"*/" ~ ANY)* ~ "*/" }
+COMMENT    = _{ block_comment | ("//" ~ (!newline ~ ANY)*) }
+
+assignment_operator = { "=" }
+opening_brace       = { "{" }
+closing_brace       = { "}" }
+opening_paren       = { "(" }
+closing_paren       = { ")" }
+opening_brack       = { "[" }
+closing_brack       = { "]" }
+
+// Letters and digits
+letter = { 'A'..'Z' | 'a'..'z' }
+decimalDigit = { '0'..'9' }
+octalDigit   = { '0'..'7' }
+hexDigit     = { '0'..'9' | 'A'..'F' | 'a'..'f' }
+
+// Identifiers
+ident = @{ letter ~ ( letter | decimalDigit | "_" )* }
+fullIdent = @{ ident ~ ("." ~ ident )* }
+messageName = { ident }
+enumName = { ident }
+fieldName = { ident }
+oneofName = { ident }
+mapName = { ident }
+serviceName = { ident }
+rpcName = { ident }
+messageType = @{ "."? ~ (ident ~ ".")* ~ messageName }
+enumType = @{ "."? ~ ( ident ~ "." )* ~ enumName }
+messageOrEnum = { messageType | enumType }
+
+// Integer literals
+intLit     = { decimalLit | octalLit | hexLit }
+decimalLit = @{ ( '1'..'9' ) ~ (decimalDigit)* }
+octalLit   = @{ "0" ~ ( octalDigit )* }
+hexLit     = @{ "0" ~ ( "x" | "X" ) ~ hexDigit ~ ( hexDigit )* } 
+
+// Floating-point literals
+floatLit = @{ decimals ~ "." ~ ( decimals )? ~ ( exponent )? | decimals ~ exponent | "." ~ decimals ~ ( exponent )? | "inf" | "nan" }
+decimals = @{ decimalDigit ~ (decimalDigit)* }
+exponent = @{ ( "e" | "E" ) ~ ( "+" | "-" )? ~ decimals } 
+
+// Boolean
+boolLit = { "true" | "false" } 
+
+// String literals
+// strLit = { ( "'" ~ charValue* ~ "'" ) | ( "\"" ~ charValue? ~ "\"" ) }
+// charValue = { hexEscape | octEscape | charEscape } // TODO: | /[^\0\n\\]/ }
+// hexEscape = { "\\" ~ ( "x" | "X" ) ~ hexDigit ~ hexDigit }
+// octEscape = { "\\" ~ octalDigit ~ octalDigit ~ octalDigit }
+// charEscape = { "\\" ~ ( "a" | "b" | "f" | "n" | "r" | "t" | "v" | "\\" | "'" | "\"" ) }
+// quote = { "'" | "\"" }
+strLit             = ${ quote ~ inner_str ~ quote }
+character          = ${ single_quote ~ inner_chr ~ single_quote }
+
+inner_str = @{ (!("\"" | "\\") ~ ANY)* ~ (escape ~ inner_str)? }
+inner_chr = @{ escape | ANY }
+escape    = @{ "\\" ~ ("\"" | "\\" | "r" | "n" | "t" | "0" | "'" | code | unicode) }
+code      = @{ "x" ~ hex_digit{2} }
+unicode   = @{ "u" ~ opening_brace ~ hex_digit{2, 6} ~ closing_brace }
+hex_digit = @{ '0'..'9' | 'a'..'f' | 'A'..'F' }
+
+quote          = { "\"" }
+single_quote   = { "'" }
+
+
+// EmptyStatement
+emptyStatement = { ";" }
+
+// Constant
+constant = { fullIdent | ( ( "-" | "+" )? ~ intLit ) | ( ( "-" | "+" )? ~ floatLit ) | strLit | boolLit }
+
+
+// Syntax
+syntax = {"syntax" ~ "=" ~ quote ~ "proto3" ~ quote ~ ";" }
+
+// Import
+weak = { "weak" }
+public = { "public" }
+import = { "import" ~ ( weak | public )? ~ strLit ~ ";" } 
+
+// Package
+package = { "package" ~ fullIdent ~ ";" }
+
+// Option
+option = { "option" ~ optionName ~ "=" ~ constant ~ ";" }
+optionName = { ( ident | "(" ~ fullIdent ~ ")" ) ~ ( "." ~ ident )* }
+
+// Fields
+doubleType = { "double" }
+floatType = { "float" }
+int32Type = { "int32" }
+int64Type = { "int64" }
+uint32Type = { "uint32" }
+uint64Type = { "uint64" }
+sint32Type = { "sint32" }
+sint64Type = { "sint64" }
+fixed32Type = { "fixed32" }
+fixed64Type = { "fixed64" }
+sfixed32Type = { "sfixed32" }
+sfixed64Type = { "sfixed64" }
+boolType = { "bool" }
+stringType = { "string" }
+bytesType = { "bytes" }
+normalType = { doubleType | floatType | int32Type | int64Type | uint32Type | uint64Type
+      | sint32Type | sint64Type | fixed32Type | fixed64Type | sfixed32Type | sfixed64Type
+      | boolType | stringType | bytesType | messageOrEnum }
+fieldNumber = { intLit }
+
+// Normal field
+field = {  (repeated)? ~ normalType ~ fieldName ~ "=" ~ fieldNumber ~  ( "[" ~ fieldOptions ~ "]")? ~ ";" }
+fieldOptions = { fieldOption ~ ("," ~ fieldOption )* }
+fieldOption = { optionName ~ "=" ~ constant }
+repeated = { "repeated" }
+
+// Oneof and oneof field
+oneof = { "oneof" ~ oneofName ~ "{" ~ (oneofField | emptyStatement )* ~ "}" }
+oneofField = { normalType ~ fieldName ~ "=" ~ fieldNumber ~ ( "[" ~ fieldOptions ~ "]" )? ~ ";" }
+
+// Map field
+mapField = { "map" ~ "<" ~ keyType ~ "," ~ normalType ~ ">" ~ mapName ~ "=" ~ fieldNumber ~ ( "[" ~ fieldOptions ~ "]" )? ~ ";" }
+keyType = { int32Type | int64Type | uint32Type | uint64Type| sint32Type | sint64Type 
+      | fixed32Type | fixed64Type | sfixed32Type | sfixed64Type | boolType | stringType }
+
+// Reserved
+reserved = { "reserved" ~ ( ranges | fieldNames ) ~ ";" }
+ranges = { range ~ ( "," ~ range )* }
+range = { intLit ~ ( "to" ~ ( intLit | "max" ) )? }
+fieldNames = { fieldName ~ ( "," ~ fieldName)* }
+
+// Top Level definitions
+
+// Enum definition
+Enum = { "enum" ~ enumName ~ enumBody }
+enumBody = { "{" ~ ( option | enumField | emptyStatement )* ~ "}" }
+enumField = { ident ~ "=" ~ intLit ~ ("[" ~ enumValueOption ~ ( "," ~ enumValueOption )* ~ "]" )? ~ ";"}
+enumValueOption = { optionName ~ "=" ~ constant }
+
+// Message definition
+Message = { "message" ~ messageName ~ messageBody }
+messageBody = { "{" ~ (field | Enum | Message | option | oneof | mapField | reserved | emptyStatement )* ~ "}" }
+
+// Service definition
+Service = { "service" ~ serviceName ~ "{" ~ ( option | rpc | emptyStatement )* ~ "}" }
+rpc = { "rpc" ~ rpcName ~ "(" ~ ( "stream" )? ~ messageType ~ ")" ~ "returns" ~ "(" ~ ("stream")? ~ messageType ~ ")" ~ (( "{" ~ ( option | emptyStatement )* ~ "}" ) | ";") }
